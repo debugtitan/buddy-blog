@@ -1,5 +1,5 @@
 import math
-from sqlalchemy import Column, Boolean, String
+from sqlalchemy import Column, Boolean, String, Enum
 from core.db import Base
 from core.utils import enums
 
@@ -9,7 +9,7 @@ class Blogs(enums.BaseModelMixin, Base):
 
     title = Column(String(30), unique=True)
     description = Column(String)
-    tag = Column(String, default=enums.BlogTagType.EVENTS.value)
+    tag = Column(Enum(enums.BlogTagType), default=enums.BlogTagType.EVENTS.value)
     members_only = Column(Boolean, default=False)
 
     @property
