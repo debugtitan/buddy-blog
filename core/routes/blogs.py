@@ -14,12 +14,7 @@ async def retrieve_blogs(db: db_dependacy) -> list[BlogRetrieve]:
 
 @blog_router.post("/blogs", status_code=status.HTTP_201_CREATED)
 async def create_new_blog(db: db_dependacy, blog_data: BlogCreate):
-    new_blog = Blogs(
-        title=blog_data.title,
-        description=blog_data.description,
-        tag=blog_data.tag,
-        members_only=blog_data.members_only,
-    )
+    new_blog = Blogs(**blog_data.model_dump())
     db.add(new_blog)
     db.commit()
     db.refresh(new_blog)
