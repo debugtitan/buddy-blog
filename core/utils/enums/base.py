@@ -8,7 +8,7 @@ class BaseModelMixin:
     def __tablename__(cls):
         return cls.__name__.lower()
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     date_added = Column(DateTime, default=func.now())
     date_last_updated = Column(DateTime, default=func.now(), onupdate=func.now())
 
