@@ -7,9 +7,9 @@ from core.routes import blogs
 Base.metadata.create_all(engine)
 
 app = FastAPI(
-    # title="Readre Blog API",
-    # description="api documentation for Readre",
-    # version="1.0.0"
+    title="Readre Blog API",
+    description="api documentation for Readre",
+    version="1.0.0"
 )
 
 origins = ["http://localhost:3000"]
