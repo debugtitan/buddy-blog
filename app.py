@@ -1,21 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from core.db import Base,engine
-from core.routers.blogs import blog_router
+from core.db import Base, engine
+from core.routes import blogs
 
 
 Base.metadata.create_all(engine)
 
 app = FastAPI(
-  title="Buddy Blog API",
-  description="api documentation for buddy-blog",
-  version="1.0.0",
-  root_path="/api"
+    # title="Readre Blog API",
+    # description="api documentation for Readre",
+    # version="1.0.0"
 )
 
-origins = [
-    "http://localhost:3000"
-]
+origins = ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,4 +22,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(blog_router)
+app.include_router(blogs.blog_router)
