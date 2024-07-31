@@ -1,5 +1,7 @@
-from pydantic import BaseModel
+from typing import Optional
+from pydantic import BaseModel, Field
 from datetime import datetime
+from core.utils import enums
 
 
 class BlogRetrieve(BaseModel):
@@ -14,3 +16,17 @@ class BlogRetrieve(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BlogCreate(BaseModel):
+    title: str = Field(min_length=10, description="Blog title", max_length=30)
+    description: str = Field(min_length=30, description="blog contents")
+    tag: enums.BlogTagType = Field(
+        default=enums.BlogTagType.EVENTS.value, description="Blog tag"
+    )
+    members_only: Optional[bool] = Field(
+        default=False, description="Members only access"
+    )
+
+    class Config:
+        use_enum_values = True
