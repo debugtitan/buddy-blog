@@ -3,7 +3,7 @@ from .base import BaseEnum
 
 class BlogTagType(BaseEnum):
     TECH = "Technology"
-    DATA_SCIENCE = "Data S cience"
+    DATA_SCIENCE = "Data Science"
     AI_ML = "AI / ML"
     WEB_DEVELOPMENT = "Web Development"
     MOBILE_DEVELOPMENT = "Mobile Development"
