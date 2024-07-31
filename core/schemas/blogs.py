@@ -22,7 +22,7 @@ class BlogCreate(BaseModel):
     title: str = Field(min_length=10, description="Blog title", max_length=30)
     description: str = Field(min_length=30, description="blog contents")
     tag: enums.BlogTagType = Field(
-        default=enums.BlogTagType.values(), description="Blog tag"
+        default=enums.BlogTagType.EVENTS.value, description="Blog tag"
     )
     members_only: Optional[bool] = Field(
         default=False, description="Members only access"
