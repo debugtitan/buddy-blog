@@ -4,4 +4,7 @@ from core.utils import enums
 
 
 class Blogs(enums.BaseModelMixin, Base):
-  """ default blogs models for buddy-blog"""
+  """ default blogs models for Readre"""
+  title = Column(String(30),unique=True)
+  description = Column(String)
+  
