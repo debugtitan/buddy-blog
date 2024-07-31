@@ -1,0 +1,15 @@
+Blogs
+- [] edit blog
+- [] delete blog
+- [] blog likes
+- [] blog comments
+
+Members
+- [] models
+- [] schemas
+- [] routes
+- [] own blogs
+
+
+Auth
+- Google Auth
