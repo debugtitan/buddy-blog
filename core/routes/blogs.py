@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status,Path, HTTPException
 from core.db import db_dependacy
 from core.schemas.blogs import BlogRetrieve, BlogCreate
 from core.models.blogs import Blogs
@@ -25,3 +25,10 @@ async def create_new_blog(db: db_dependacy, blog_data: BlogCreate):
     db.commit()
     db.refresh(new_blog)
     return new_blog
+
+@blog_router.get("/blogs/{blog_id}", status_code=status.HTTP_200_OK)
+async def get_blog(db: db_dependacy, blog_id: int = Path(gt=0)):
+    blog_model = db.query(Blogs).filter(Blogs.id == blog_id).first()
+    if blog_model is None:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    return blog_model
