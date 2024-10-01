@@ -1,7 +1,9 @@
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.db import Base, engine
-from core.routes import blogs
+from core.routes import blog_router, media_router, auth_router  # Import routers
 
 
 Base.metadata.create_all(engine)
@@ -12,8 +14,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-origins = ["http://localhost:3000"]
 
+origins = ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -22,4 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(blogs.blog_router)
+
+app.include_router(blog_router)
+app.include_router(media_router)
+app.include_router(auth_router)
