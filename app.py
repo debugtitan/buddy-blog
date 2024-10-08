@@ -6,7 +6,7 @@ from core.db import Base, engine
 from core.routes import blog_router, media_router, auth_router  # Import routers
 
 
-Base.metadata.create_all(engine)
+# Base.metadata.create_all(engine)
 
 app = FastAPI(
     title="Readre Blog API",
