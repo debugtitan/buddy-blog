@@ -7,6 +7,7 @@ from core.schemas.blogs import BlogCreate, BlogRetrieve, CommentCreate, CommentR
 from core.schemas.users import UserRetrieve
 from typing import List
 from core.routes.auth import get_current_user
+from slugify import slugify
 
 
 blog_router = APIRouter(tags=["Blogs"])
@@ -69,6 +70,56 @@ async def get_blog(slug: str, db: db_dependacy):
         raise HTTPException(status_code=500, detail=str(e))
     
 
+@blog_router.get("/user/blogs", response_model=List[BlogRetrieve])
+async def get_user_blogs(db: db_dependacy, current_user: User = Depends(get_current_user)):
+    """Get all blogs created by the current user"""
+    blogs = db.query(Blog).filter(Blog.user_id == current_user.id).all()
+    return blogs
+
+@blog_router.put("/blogs/{slug}", response_model=BlogRetrieve)
+async def update_blog(
+    slug: str, 
+    blog_update: BlogCreate, 
+    db: db_dependacy, 
+    current_user: User = Depends(get_current_user)
+):
+    """Update a blog post"""
+    blog = db.query(Blog).filter(Blog.slug == slug).first()
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    
+    if blog.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this blog")
+    
+    # Update blog fields
+    for field, value in blog_update.dict().items():
+        setattr(blog, field, value)
+    
+    # Update slug if title has changed
+    if blog_update.title:
+        blog.slug = slugify(blog_update.title)
+    
+    db.commit()
+    db.refresh(blog)
+    return blog
+
+@blog_router.delete("/blogs/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_blog(
+    slug: str, 
+    db: db_dependacy, 
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a blog post"""
+    blog = db.query(Blog).filter(Blog.slug == slug).first()
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    
+    if blog.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this blog")
+    
+    db.delete(blog)
+    db.commit()
+    return {"detail": "Blog deleted successfully"}
 
 @blog_router.post("/blogs/{slug}/comments", response_model=CommentRetrieve)
 async def create_comment(slug: str, comment: CommentCreate, db: db_dependacy, current_user: User = Depends(get_current_user)):
