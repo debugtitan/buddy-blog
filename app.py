@@ -15,7 +15,7 @@ app = FastAPI(
 )
 
 
-origins = ["http://localhost:3000"]
+origins = ["http://localhost:3000", "https://readre.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -30,6 +30,9 @@ app.include_router(media_router)
 app.include_router(auth_router)
 
 
-@app.get("/health")
+@app.get("/")
 async def health_check():
-    return {"status": "ok"}
+    return {"detail;":"welcome to the readre blog API",
+            "docs":"check /docs for documentation",
+            "status":"ok"
+            }
