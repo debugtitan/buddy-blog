@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import requests
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+from typing import Optional
 import secrets
 
 auth_router = APIRouter(tags=["Authentication"])
@@ -30,8 +31,8 @@ REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 def get_current_user(
     db: db_dependacy,
-    access_token: str | None = Cookie(None),
-    refresh_token: str | None = Cookie(None)
+    access_token: Optional[str]  = Cookie(None),
+    refresh_token: Optional[str] = Cookie(None)
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

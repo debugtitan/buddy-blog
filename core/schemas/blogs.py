@@ -47,7 +47,7 @@ class BlogCreate(BaseModel):
     tag: enums.BlogTagType = Field(
         default=enums.BlogTagType.EVENTS.value, description="Blog tag"
     )
-    members_only: bool | None = Field(
+    members_only: Optional[bool] = Field(
         default=False, description="Members only access"
     )
     image: str

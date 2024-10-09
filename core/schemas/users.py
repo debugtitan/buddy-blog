@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -8,7 +9,7 @@ class UserRetrieve(BaseModel):
     id: int
     email: str
     name: str
-    picture: str | None
+    picture: Optional[str] = None 
 
     class Config:
         from_attributes = True
