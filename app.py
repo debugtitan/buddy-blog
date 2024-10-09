@@ -28,3 +28,8 @@ app.add_middleware(
 app.include_router(blog_router)
 app.include_router(media_router)
 app.include_router(auth_router)
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
