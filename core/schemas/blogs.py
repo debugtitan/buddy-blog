@@ -1,6 +1,7 @@
 from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from core.utils import enums
+from typing import Optional
 
 class CommentBase(BaseModel):
     text: str
@@ -18,7 +19,7 @@ class CommentRetrieve(BaseModel):
     user_id: int
     blog_id: int
     author: str
-    author_picture: str | None = None
+    author_picture: Optional[str] =None
     liked: bool = False
     likes_count: int = 0
 
