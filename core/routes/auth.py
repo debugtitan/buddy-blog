@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 from fastapi.security import OAuth2PasswordBearer
 from core.db import db_dependacy
 from core.models.users import User
-from core.schemas.users import UserCreate, UserRetrieve
+from core.schemas.users import UserRetrieve
 from core.config.settings import settings
 from pydantic import BaseModel
 import requests
@@ -11,6 +11,18 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 import secrets
+from contextlib import contextmanager
+import httpx
+
+# Add this context manager at the top of your file
+@contextmanager
+def get_httpx_client():
+    client = httpx.Client()
+    try:
+        yield client
+    finally:
+        client.close()
+
 
 auth_router = APIRouter(tags=["Authentication"])
 
@@ -103,15 +115,15 @@ def create_refresh_token():
 @auth_router.post("/auth/google", response_model=Token)
 async def google_auth(token_data: TokenData, response: Response, db: db_dependacy):
     try:
-        # Log the beginning of the authentication process
         print(f"Starting Google authentication process")
         
-        # Fetch user info from Google
-        google_response = requests.get(
-            f'https://www.googleapis.com/oauth2/v3/userinfo',
-            params={'access_token': token_data.token},
-            timeout=5  # 5 seconds timeout
-        )
+        # Use httpx with context manager instead of requests
+        with get_httpx_client() as client:
+            google_response = client.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                params={'access_token': token_data.token},
+                timeout=5.0
+            )
         
         # Check if the Google API request was successful
         if google_response.status_code != 200:
@@ -125,7 +137,7 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
         user_data = google_response.json()
         print(f"Received user data from Google: {user_data}")
         
-        # Extract required user information
+        # Rest of your existing code remains the same
         user_email = user_data.get('email')
         if not user_email:
             raise ValueError("Email not provided by Google")
@@ -162,9 +174,9 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=True,  # Set to True in production
+            secure=True,
             samesite='lax',
-            max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,  # Use your constant here
+            max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
             path="/"
         )
         
@@ -173,22 +185,21 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True,  # Set to True in production
+            secure=True,
             samesite='lax',
-            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,  # Use your constant here
+            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
             path="/"
         )
 
         print(f"Authentication successful for user: {user_email}")
         
-        # Return the response
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "user": UserRetrieve.model_validate(user)
         }
 
-    except requests.RequestException as e:
+    except httpx.RequestError as e:
         print(f"Network error during Google authentication: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
