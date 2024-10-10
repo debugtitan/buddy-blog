@@ -6,15 +6,13 @@ from core.models.users import User
 from core.schemas.users import UserRetrieve
 from core.config.settings import settings
 from pydantic import BaseModel
-import requests
+import httpx
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 import secrets
 from contextlib import contextmanager
-import httpx
 
-# Add this context manager at the top of your file
 @contextmanager
 def get_httpx_client():
     client = httpx.Client()
@@ -23,9 +21,7 @@ def get_httpx_client():
     finally:
         client.close()
 
-
 auth_router = APIRouter(tags=["Authentication"])
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class TokenData(BaseModel):
@@ -36,14 +32,45 @@ class Token(BaseModel):
     token_type: str
     user: UserRetrieve
 
-SECRET_KEY = settings.SECRET_KEY
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 30
+# Helper function to set cookies
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    cookie_settings = {
+        "httponly": True,
+        "secure": settings.IS_PRODUCTION,
+        "samesite": 'lax',
+        "domain": settings.COOKIE_DOMAIN,
+        "path": "/"
+    }
+    
+    print(f"Setting cookies with domain: {settings.COOKIE_DOMAIN}")
+    
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=60 * settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        **cookie_settings
+    )
+    
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=60 * 60 * 24 * 30,  # 30 days
+        **cookie_settings
+    )
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+def create_refresh_token():
+    return secrets.token_urlsafe(32)
 
 def get_current_user(
     db: db_dependacy,
-    access_token: Optional[str]  = Cookie(None),
+    access_token: Optional[str] = Cookie(None),
     refresh_token: Optional[str] = Cookie(None)
 ):
     credentials_exception = HTTPException(
@@ -56,25 +83,19 @@ def get_current_user(
         raise credentials_exception
     
     try:
+        user = None
         if access_token:
-            # Try to decode the access token
-            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             user_email = payload.get("sub")
-            if user_email is None:
-                raise credentials_exception
-        elif refresh_token:
-            # If no access token but refresh token exists, try to find user by refresh token
-            user = db.query(User).filter(User.refresh_token == refresh_token).first()
-            if not user:
-                raise credentials_exception
-            user_email = user.email
-        else:
-            raise credentials_exception
+            if user_email:
+                user = db.query(User).filter(User.email == user_email).first()
         
-        # Fetch the user from the database
-        user = db.query(User).filter(User.email == user_email).first()
-        if user is None:
+        if not user and refresh_token:
+            user = db.query(User).filter(User.refresh_token == refresh_token).first()
+        
+        if not user:
             raise credentials_exception
+            
         return user
     except JWTError:
         raise credentials_exception
@@ -85,39 +106,22 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user),
     db: db_dependacy = db_dependacy,
 ):
-    
     # Create a new access token
     access_token = create_access_token({"sub": current_user.email})
+    refresh_token = current_user.refresh_token or create_refresh_token()
     
-    # Set the access token in a cookie
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,  # Use this in production with HTTPS
-        samesite='lax',
-        max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
-        path="/"
-    )
+    # Use helper function to set cookies
+    set_auth_cookies(response, access_token, refresh_token)
     
     return current_user
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def create_refresh_token():
-    return secrets.token_urlsafe(32)
 
 @auth_router.post("/auth/google", response_model=Token)
 async def google_auth(token_data: TokenData, response: Response, db: db_dependacy):
     try:
         print(f"Starting Google authentication process")
+        print(f"Production mode: {settings.IS_PRODUCTION}")
+        print(f"Cookie domain: {settings.COOKIE_DOMAIN}")
         
-        # Use httpx with context manager instead of requests
         with get_httpx_client() as client:
             google_response = client.get(
                 'https://www.googleapis.com/oauth2/v3/userinfo',
@@ -125,7 +129,6 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
                 timeout=5.0
             )
         
-        # Check if the Google API request was successful
         if google_response.status_code != 200:
             print(f"Google API error: {google_response.status_code} - {google_response.text}")
             raise HTTPException(
@@ -133,11 +136,9 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
                 detail=f"Failed to verify Google token: {google_response.status_code}"
             )
         
-        # Parse the user data from Google
         user_data = google_response.json()
         print(f"Received user data from Google: {user_data}")
         
-        # Rest of your existing code remains the same
         user_email = user_data.get('email')
         if not user_email:
             raise ValueError("Email not provided by Google")
@@ -145,7 +146,6 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
         user_name = user_data.get('name', '')
         user_picture = user_data.get('picture', '')
 
-        # Find or create user in database
         user = db.query(User).filter(User.email == user_email).first()
         if not user:
             print(f"Creating new user with email: {user_email}")
@@ -160,37 +160,16 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
             user.name = user_name
             user.picture = user_picture
         
-        # Create tokens
         access_token = create_access_token({"sub": user_email})
         refresh_token = create_refresh_token()
         
-        # Update user's refresh token in database
         user.refresh_token = refresh_token
         db.commit()
         db.refresh(user)
 
-        # Set access token cookie
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=True,
-            samesite='lax',
-            max_age=60 * ACCESS_TOKEN_EXPIRE_MINUTES,
-            path="/"
-        )
+        # Use helper function to set cookies
+        set_auth_cookies(response, access_token, refresh_token)
         
-        # Set refresh token cookie
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=True,
-            samesite='lax',
-            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,
-            path="/"
-        )
-
         print(f"Authentication successful for user: {user_email}")
         
         return {
@@ -205,12 +184,6 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Failed to connect to Google: {str(e)}"
         )
-    except ValueError as e:
-        print(f"Validation error during authentication: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
     except Exception as e:
         print(f"Unexpected error during authentication: {str(e)}")
         raise HTTPException(
@@ -218,18 +191,27 @@ async def google_auth(token_data: TokenData, response: Response, db: db_dependac
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-
 @auth_router.post("/auth/refresh", response_model=Token)
-async def refresh_token(response: Response, db: db_dependacy, refresh_token: str = Cookie(None)):
+async def refresh_token(
+    response: Response,
+    db: db_dependacy,
+    refresh_token: str = Cookie(None)
+):
     if not refresh_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token missing"
+        )
     
     try:
         user = db.query(User).filter(User.refresh_token == refresh_token).first()
         if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
 
-        # Create new access and refresh tokens
+        # Create new tokens
         new_access_token = create_access_token({"sub": user.email})
         new_refresh_token = create_refresh_token()
 
@@ -237,17 +219,8 @@ async def refresh_token(response: Response, db: db_dependacy, refresh_token: str
         user.refresh_token = new_refresh_token
         db.commit()
 
-        # Set new refresh token in an HTTP-only cookie
-        response.set_cookie(
-            key="refresh_token", 
-            value=new_refresh_token,
-            httponly=True,
-            secure=True,  # Use this in production with HTTPS
-            samesite='lax',
-            max_age=60 * 60 * 24 * REFRESH_TOKEN_EXPIRE_DAYS,  # 30 days
-            domain=None,  # Set this to your domain in production
-            path="/"
-        )
+        # Use helper function to set cookies
+        set_auth_cookies(response, new_access_token, new_refresh_token)
 
         return {
             "access_token": new_access_token,
@@ -256,12 +229,22 @@ async def refresh_token(response: Response, db: db_dependacy, refresh_token: str
         }
 
     except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials"
+        )
 
 @auth_router.post("/auth/logout")
 async def logout(response: Response):
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    cookie_settings = {
+        "httponly": True,
+        "secure": settings.IS_PRODUCTION,
+        "samesite": 'lax',
+        "domain": settings.COOKIE_DOMAIN,
+        "path": "/"
+    }
+    
+    response.delete_cookie(key="access_token", **cookie_settings)
+    response.delete_cookie(key="refresh_token", **cookie_settings)
+    
     return {"message": "Successfully logged out"}
-
-
