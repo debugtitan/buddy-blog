@@ -80,6 +80,7 @@ def get_current_user(
     )
     
     if not access_token and not refresh_token:
+        print(f"{credentials_exception} - No token provided")
         raise credentials_exception
     
     try:
@@ -94,10 +95,12 @@ def get_current_user(
             user = db.query(User).filter(User.refresh_token == refresh_token).first()
         
         if not user:
+            print(f"{credentials_exception} - User not found")
             raise credentials_exception
             
         return user
     except JWTError:
+        print(f"{credentials_exception} - Invalid JWT token")
         raise credentials_exception
 
 @auth_router.get("/auth/me", response_model=UserRetrieve)
