@@ -37,12 +37,13 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     cookie_settings = {
         "httponly": True,
         "secure": settings.IS_PRODUCTION,
-        "samesite": 'lax',
+        "samesite": 'None' if settings.IS_PRODUCTION else 'Lax',
         "domain": settings.COOKIE_DOMAIN,
         "path": "/"
     }
     
     print(f"Setting cookies with domain: {settings.COOKIE_DOMAIN}")
+    print(f"Cookie settings: {cookie_settings}")
     
     response.set_cookie(
         key="access_token",
