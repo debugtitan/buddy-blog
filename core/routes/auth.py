@@ -1,5 +1,5 @@
 # routes/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
 from fastapi.security import OAuth2PasswordBearer
 from core.db import db_dependacy
 from core.models.users import User
@@ -69,22 +69,17 @@ def create_access_token(data: dict):
 def create_refresh_token():
     return secrets.token_urlsafe(32)
 
-def get_current_user(
+async def get_current_user(
     db: db_dependacy,
-    access_token: Optional[str] = Cookie(None),
-    refresh_token: Optional[str] = Cookie(None)
+    access_token: str = None,
+    refresh_token: str = None
 ):
     print(f"Received access_token: {access_token}")
     print(f"Received refresh_token: {refresh_token}")
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     
     if not access_token and not refresh_token:
-        print(f"{credentials_exception} - No token provided in Cookies")
-        raise credentials_exception
+        print("No tokens provided in cookies")
+        return None
     
     try:
         user = None
@@ -98,28 +93,53 @@ def get_current_user(
             user = db.query(User).filter(User.refresh_token == refresh_token).first()
         
         if not user:
-            print(f"{credentials_exception} - User not found")
-            raise credentials_exception
+            print("User not found in database")
+            return None
             
+        print(f"User authenticated: {user.email}")
         return user
-    except JWTError:
-        print(f"{credentials_exception} - Invalid JWT token")
-        raise credentials_exception
+    except JWTError as e:
+        print(f"JWT Error: {str(e)}")
+        return None
 
 @auth_router.get("/auth/me", response_model=UserRetrieve)
 async def get_current_user_info(
+    request: Request,
     response: Response,
-    current_user: User = Depends(get_current_user),
     db: db_dependacy = db_dependacy,
 ):
-    # Create a new access token
-    access_token = create_access_token({"sub": current_user.email})
-    refresh_token = current_user.refresh_token or create_refresh_token()
-    
-    # Use helper function to set cookies
-    set_auth_cookies(response, access_token, refresh_token)
-    
-    return current_user
+    print("Headers received in /auth/me:")
+    for name, value in request.headers.items():
+        print(f"{name}: {value}")
+
+    print("Cookies received in /auth/me:")
+    for name, value in request.cookies.items():
+        print(f"{name}: {value}")
+
+    try:
+        # Use a custom dependency to get the current user
+        current_user = await get_current_user(db, request.cookies.get("access_token"), request.cookies.get("refresh_token"))
+        
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Create a new access token
+        access_token = create_access_token({"sub": current_user.email})
+        refresh_token = current_user.refresh_token or create_refresh_token()
+        
+        # Use helper function to set cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
+        return current_user
+    except Exception as e:
+        print(f"Error in get_current_user_info: {str(e)}")
+        raise
+
+
 
 @auth_router.post("/auth/google", response_model=Token)
 async def google_auth(token_data: TokenData, response: Response, db: db_dependacy):
