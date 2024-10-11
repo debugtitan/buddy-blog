@@ -73,6 +73,8 @@ def get_current_user(
     access_token: Optional[str] = Cookie(None),
     refresh_token: Optional[str] = Cookie(None)
 ):
+    print(f"Received access_token: {access_token}")
+    print(f"Received refresh_token: {refresh_token}")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -80,7 +82,7 @@ def get_current_user(
     )
     
     if not access_token and not refresh_token:
-        print(f"{credentials_exception} - No token provided")
+        print(f"{credentials_exception} - No token provided in Cookies")
         raise credentials_exception
     
     try:
