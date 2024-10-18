@@ -1,7 +1,10 @@
 # routes/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
 from fastapi.security import OAuth2PasswordBearer
-from core.db import db_dependacy
+from core.db import db_dependacy, get_db
+from sqlalchemy.orm import Session
+
+
 from core.models.users import User
 from core.schemas.users import UserRetrieve
 from core.config.settings import settings
@@ -70,55 +73,60 @@ def create_refresh_token():
     return secrets.token_urlsafe(32)
 
 async def get_current_user(
-    db: db_dependacy,
+    db: Session = Depends(get_db),
     access_token: str = None,
     refresh_token: str = None
 ):
-    print(f"Received access_token: {access_token}")
-    print(f"Received refresh_token: {refresh_token}")
-    
     if not access_token and not refresh_token:
-        print("No tokens provided in cookies")
-        return None
+        raise HTTPException(status_code=401, detail="No authentication tokens provided")
     
     try:
-        user = None
-        if access_token:
-            payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            user_email = payload.get("sub")
-            if user_email:
-                user = db.query(User).filter(User.email == user_email).first()
-        
-        if not user and refresh_token:
-            user = db.query(User).filter(User.refresh_token == refresh_token).first()
-        
-        if not user:
-            print("User not found in database")
-            return None
+        # Remove 'Bearer ' prefix if present
+        if access_token and access_token.startswith('Bearer '):
+            access_token = access_token.split(' ')[1]
             
-        print(f"User authenticated: {user.email}")
+        if access_token:
+            try:
+                payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                email: str = payload.get("sub")
+                if email is None:
+                    raise HTTPException(status_code=401, detail="Invalid access token")
+            except JWTError:
+                # If access token is invalid, try refresh token
+                if not refresh_token:
+                    raise HTTPException(status_code=401, detail="Invalid access token and no refresh token provided")
+                # Handle refresh token logic here if needed
+                pass
+        elif refresh_token:
+            # Logic to validate refresh token and get user email
+            pass
+        else:
+            raise HTTPException(status_code=401, detail="No valid token provided")
+        
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
         return user
-    except JWTError as e:
-        print(f"JWT Error: {str(e)}")
-        return None
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 @auth_router.get("/auth/me", response_model=UserRetrieve)
 async def get_current_user_info(
     request: Request,
     response: Response,
-    db: db_dependacy = db_dependacy,
+    db: db_dependacy ,  # Make sure you're using the correct dependency
 ):
-    print("Headers received in /auth/me:")
-    for name, value in request.headers.items():
-        print(f"{name}: {value}")
-
-    print("Cookies received in /auth/me:")
-    for name, value in request.cookies.items():
-        print(f"{name}: {value}")
-
     try:
-        # Use a custom dependency to get the current user
-        current_user = await get_current_user(db, request.cookies.get("access_token"), request.cookies.get("refresh_token"))
+        print("Headers:", request.headers)
+        print("Cookies:", request.cookies)
+        
+        access_token = request.cookies.get("access_token")
+        refresh_token = request.cookies.get("refresh_token")
+        
+        if not access_token and not refresh_token:
+            raise HTTPException(status_code=401, detail="No authentication tokens found")
+        
+        current_user = await get_current_user(db, access_token, refresh_token)
         
         if not current_user:
             raise HTTPException(
@@ -128,16 +136,15 @@ async def get_current_user_info(
             )
 
         # Create a new access token
-        access_token = create_access_token({"sub": current_user.email})
-        refresh_token = current_user.refresh_token or create_refresh_token()
+        new_access_token = create_access_token({"sub": current_user.email})
         
         # Use helper function to set cookies
-        set_auth_cookies(response, access_token, refresh_token)
+        set_auth_cookies(response, new_access_token, refresh_token)
         
         return current_user
     except Exception as e:
         print(f"Error in get_current_user_info: {str(e)}")
-        raise
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
