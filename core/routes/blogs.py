@@ -48,10 +48,25 @@ async def create_blog(
             detail=str(e)
         )
     
-    
+
 @blog_router.get("/blogs", response_model=List[BlogRetrieve])
-async def get_blogs(db: db_dependacy):
-    blogs = db.query(Blog).all()
+async def get_blogs(
+    db: db_dependacy,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10  # Default to 10 if not specified
+):
+    query = db.query(Blog)
+    
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(Blog.title.ilike(search_term))
+    
+    # Order by date_added descending (newest first)
+    query = query.order_by(Blog.date_added.desc())
+    
+    # Apply pagination
+    blogs = query.offset(skip).limit(limit).all()
     return blogs
 
 @blog_router.get("/blogs/{slug}", response_model=BlogRetrieve)
